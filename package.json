@@ -1,0 +1,53 @@
+{
+  "name": "vite-template-all-in-one",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "lint": "eslint src --ext ts,tsx --report-unused-disable-directives --max-warnings 0 --fix",
+    "prepare": "husky install",
+    "preview": "vite preview",
+    "preinstall": "npx only-allow pnpm"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/TonyL1u/2048"
+  },
+  "author": "TonyL1u",
+  "license": "MIT",
+  "dependencies": {
+    "animejs": "^4.1.2",
+    "classnames": "^2.5.1",
+    "es-toolkit": "^1.39.8",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "tailwindcss": "^4.1.11"
+  },
+  "devDependencies": {
+    "@commitlint/cli": "^17.6.7",
+    "@commitlint/config-conventional": "^17.6.7",
+    "@eslint/js": "^9.30.0",
+    "@tailwindcss/vite": "^4.1.11",
+    "@types/node": "^22.15.34",
+    "@types/react": "^18.2.15",
+    "@types/react-dom": "^18.2.7",
+    "@vitejs/plugin-react-swc": "^3.10.2",
+    "eslint": "^9.30.0",
+    "eslint-plugin-prettier": "^5.5.1",
+    "eslint-plugin-react": "^7.37.5",
+    "eslint-plugin-react-refresh": "^0.4.3",
+    "eslint-plugin-simple-import-sort": "^12.1.1",
+    "globals": "^16.3.0",
+    "husky": "^8.0.0",
+    "prettier-plugin-tailwindcss": "^0.6.13",
+    "typescript": "^5.0.2",
+    "typescript-eslint": "^8.35.1",
+    "vite": "^7.0.0",
+    "vite-tsconfig-paths": "^5.1.4"
+  },
+  "engines": {
+    "node": ">=22.12.0"
+  }
+}

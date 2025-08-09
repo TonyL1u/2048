@@ -36,6 +36,7 @@ export class Game {
 
   #animationQueue: AnimationType[] = [];
   #dataChangeEventQueue: ((matrix: number[][]) => void)[] = [];
+  #cubeMergedEventQueue: ((value: number) => void)[] = [];
 
   constructor(config?: GameConfig) {
     this.#config = { ...this.#config, ...config };
@@ -84,13 +85,19 @@ export class Game {
   }
 
   renew() {
-    this.#matrix = createMatrixArray(this.rows, this.cols);
+    this.#animationQueue.length = 0;
+    this.#matrix = createMatrixArray(this.#rows, this.#cols);
     this.#render();
+    this.#add();
     this.#start();
   }
 
   onDataChange(evt: (matrix: number[][]) => void) {
     this.#dataChangeEventQueue.push(evt);
+  }
+
+  onCubeMerged(evt: (value: number) => void) {
+    this.#cubeMergedEventQueue.push(evt);
   }
 
   get containerStyle(): CSSProperties {
@@ -99,16 +106,16 @@ export class Game {
     return {
       display: 'grid',
       width: 'max-content',
-      gridTemplateColumns: `repeat(${this.cols}, minmax(0, 1fr))`,
+      gridTemplateColumns: `repeat(${this.#cols}, minmax(0, 1fr))`,
       gap: `${gap}px`
     };
   }
 
-  get rows() {
+  get #rows() {
     return this.#config.rows;
   }
 
-  get cols() {
+  get #cols() {
     return this.#config.cols;
   }
 
@@ -128,7 +135,7 @@ export class Game {
       } as Record<Direction, (i: number, j: number) => [number, number]>
     )[direction];
     const inRange = (i: number, j: number) => {
-      return i >= 0 && i < this.rows && j >= 0 && j < this.cols;
+      return i >= 0 && i < this.#rows && j >= 0 && j < this.#cols;
     };
     const findNextNonZero = (i: number, j: number) => {
       const [ni, nj] = getNextPos(i, j);
@@ -162,7 +169,14 @@ export class Game {
           this.#matrix[i][j] *= 2;
           this.#matrix[ni][nj] = 0;
           this.#animationQueue.push({ ...animation, params: { opacity: 0.2 } });
+          this.#animationQueue.push({ type: 'pop', target: [i, j] });
           isMoved = true;
+
+          if (this.#cubeMergedEventQueue.length > 0) {
+            this.#cubeMergedEventQueue.forEach(fn => {
+              fn.call(null, this.#matrix[i][j]);
+            });
+          }
         }
 
         calculate(...getNextPos(i, j));
@@ -171,25 +185,25 @@ export class Game {
 
     switch (direction) {
       case Direction.UP:
-        for (let j = 0; j < this.cols; j++) {
+        for (let j = 0; j < this.#cols; j++) {
           calculate(0, j);
         }
 
         break;
       case Direction.RIGHT:
-        for (let i = 0; i < this.rows; i++) {
-          calculate(i, this.cols - 1);
+        for (let i = 0; i < this.#rows; i++) {
+          calculate(i, this.#cols - 1);
         }
 
         break;
       case Direction.DOWN:
-        for (let j = 0; j < this.cols; j++) {
-          calculate(this.rows - 1, j);
+        for (let j = 0; j < this.#cols; j++) {
+          calculate(this.#rows - 1, j);
         }
 
         break;
       case Direction.LEFT:
-        for (let i = 0; i < this.rows; i++) {
+        for (let i = 0; i < this.#rows; i++) {
           calculate(i, 0);
         }
 
@@ -244,7 +258,7 @@ export class Game {
             type,
             params
           } = animation;
-          const targetIndex = x * this.cols + y;
+          const targetIndex = x * this.#cols + y;
 
           if (type === 'zoom') {
             const { value } = animation;
@@ -256,14 +270,18 @@ export class Game {
 
             // @ts-expect-error promise type error
             await this.#cubes[targetIndex].slide({ pos, extDistance, params });
+          } else if (type === 'pop') {
+            // @ts-expect-error promise type error
+            await this.#cubes[targetIndex].pop({});
           }
         })
       ).then(() => {
-        this.#animationQueue.length = 0;
         remountCubes();
       });
     } else {
       remountCubes();
     }
+
+    this.#animationQueue.length = 0;
   }
 }

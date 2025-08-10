@@ -5,7 +5,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useGame } from './hooks/use-game';
 
 function App() {
-  const { root, containerStyle, score, reset, isGameOver } = useGame();
+  const { root, containerStyle, score, isGameOver, reset, addOne, deleteOne } = useGame();
   const oldScore = useRef(0);
   const scoreAdditionEl = useRef<HTMLDivElement>(null);
   const [bestScore, setBestScore] = useState(() => {
@@ -65,8 +65,20 @@ function App() {
           </div>
           <div className="space-y-2">
             <div className="flex gap-x-2">
-              <button className="flex-1 cursor-pointer rounded bg-gray-100 px-2 py-1 text-sm">-1</button>
-              <button className="flex-1 cursor-pointer rounded bg-gray-100 px-2 py-1 text-sm">+1</button>
+              <button
+                className="flex-1 cursor-pointer rounded bg-gray-100 px-2 py-1 text-sm"
+                onClick={() => {
+                  deleteOne([0, 0]);
+                }}>
+                -1
+              </button>
+              <button
+                className="flex-1 cursor-pointer rounded bg-gray-100 px-2 py-1 text-sm"
+                onClick={() => {
+                  addOne([0, 0]);
+                }}>
+                +1
+              </button>
             </div>
             <button className="w-full cursor-pointer rounded bg-black px-2 py-1 text-sm text-white" onClick={reset}>
               New Game

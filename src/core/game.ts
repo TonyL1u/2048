@@ -17,13 +17,25 @@ interface GameConfig {
   gap?: number;
 }
 
+type DataChangeEvent = (matrix: number[][]) => void;
+
+type CubeMergedEvent = (
+  matrix: number[][],
+  source: {
+    from: { pos: [number, number]; cube: AnimatedCube };
+    to: { pos: [number, number]; cube: AnimatedCube };
+  }
+) => void;
+
+type CubeClickEvent = (pos: [number, number], cube: AnimatedCube) => void;
+
 const createMatrixArray = (rows: number, cols: number) => {
   return Array(rows)
     .fill(null)
     .map(() => Array(cols).fill(0) as number[]);
 };
 
-export class Game {
+class Game {
   #config = {
     rows: 4,
     cols: 4,
@@ -35,8 +47,11 @@ export class Game {
   #root: HTMLDivElement | null = null;
 
   #animationQueue: AnimationType[] = [];
-  #dataChangeEventQueue: ((matrix: number[][]) => void)[] = [];
-  #cubeMergedEventQueue: ((value: number) => void)[] = [];
+  #isRendering = false;
+
+  #dataChangeEventQueue: DataChangeEvent[] = [];
+  #cubeMergedEventQueue: CubeMergedEvent[] = [];
+  #cubeClickEventQueue: CubeClickEvent[] = [];
 
   constructor(config?: GameConfig) {
     this.#config = { ...this.#config, ...config };
@@ -47,6 +62,8 @@ export class Game {
       'keydown',
       throttle(
         (e: KeyboardEvent) => {
+          if (this.#isRendering) return;
+
           switch (e.key) {
             case 'ArrowUp': {
               e.preventDefault();
@@ -85,6 +102,7 @@ export class Game {
   }
 
   renew() {
+    this.#isRendering = false;
     this.#animationQueue.length = 0;
     this.#matrix = createMatrixArray(this.#rows, this.#cols);
     this.#render();
@@ -92,12 +110,26 @@ export class Game {
     this.#start();
   }
 
-  onDataChange(evt: (matrix: number[][]) => void) {
+  addOne(pos?: [number, number], value?: 2 | 4 | 8 | 16 | 32 | 64 | 128 | 256 | 512 | 1024 | 2048) {
+    this.#add(pos, value);
+    this.#render();
+  }
+
+  deleteOne(pos?: [number, number]) {
+    this.#delete(pos);
+    this.#render();
+  }
+
+  onDataChange(evt: DataChangeEvent) {
     this.#dataChangeEventQueue.push(evt);
   }
 
-  onCubeMerged(evt: (value: number) => void) {
+  onCubeMerged(evt: CubeMergedEvent) {
     this.#cubeMergedEventQueue.push(evt);
+  }
+
+  onCubeClick(evt: CubeClickEvent) {
+    this.#cubeClickEventQueue.push(evt);
   }
 
   get containerStyle(): CSSProperties {
@@ -109,6 +141,10 @@ export class Game {
       gridTemplateColumns: `repeat(${this.#cols}, minmax(0, 1fr))`,
       gap: `${gap}px`
     };
+  }
+
+  get elements() {
+    return this.#cubes.filter(cube => cube.value !== 0).map(cube => cube.el.childNodes[0]);
   }
 
   get #rows() {
@@ -172,11 +208,16 @@ export class Game {
           this.#animationQueue.push({ type: 'pop', target: [i, j] });
           isMoved = true;
 
-          if (this.#cubeMergedEventQueue.length > 0) {
-            this.#cubeMergedEventQueue.forEach(fn => {
-              fn.call(null, this.#matrix[i][j]);
-            });
-          }
+          this.#fireCubeMergedEvents(this.#matrix, {
+            from: {
+              pos: [ni, nj],
+              cube: this.#cubes[ni * this.#cols + nj]
+            },
+            to: {
+              pos: [i, j],
+              cube: this.#cubes[i * this.#cols + j]
+            }
+          });
         }
 
         calculate(...getNextPos(i, j));
@@ -213,7 +254,7 @@ export class Game {
     return isMoved;
   }
 
-  #add() {
+  #add(pos?: [number, number], value?: number) {
     const allZeroPos: number[][] = [];
     for (let i = 0; i < this.#matrix.length; i++) {
       for (let j = 0; j < this.#matrix[i].length; j++) {
@@ -222,33 +263,88 @@ export class Game {
         }
       }
     }
-    const pos = allZeroPos[Math.floor(Math.random() * allZeroPos.length)];
-    const value = Math.random() < 0.5 ? 2 : 4;
+    const randomPos = pos || allZeroPos[Math.floor(Math.random() * allZeroPos.length)];
+    const randomValue = value || Math.random() < 0.5 ? 2 : 4;
 
-    if (pos) {
-      const [i, j] = pos;
-      this.#matrix[i][j] = value;
-      this.#animationQueue.push({ type: 'zoom', target: [i, j], value });
+    if (randomPos) {
+      const [i, j] = randomPos;
+      if (this.#matrix[i][j] === 0) {
+        this.#matrix[i][j] = randomValue;
+        this.#animationQueue.push({ type: 'zoom', target: [i, j], value: randomValue });
+      } else {
+        this.#matrix[i][j] += randomValue;
+        this.#animationQueue.push({ type: 'pop', target: [i, j] });
+
+        this.#fireCubeMergedEvents(this.#matrix, {
+          from: {
+            pos: [i, j],
+            cube: this.#cubes[i * this.#cols + j]
+          },
+          to: {
+            pos: [i, j],
+            cube: this.#cubes[i * this.#cols + j]
+          }
+        });
+      }
     }
   }
 
-  #render() {
-    const remountCubes = () => {
-      this.#cubes = this.#matrix.flat().map(value => new AnimatedCube(value));
-
-      if (this.#root) {
-        while (this.#root.firstChild) {
-          this.#root!.removeChild(this.#root.firstChild);
+  #delete(pos?: [number, number]) {
+    const allNonZeroPos: number[][] = [];
+    for (let i = 0; i < this.#matrix.length; i++) {
+      for (let j = 0; j < this.#matrix[i].length; j++) {
+        if (this.#matrix[i][j] !== 0) {
+          allNonZeroPos.push([i, j]);
         }
-        this.#root.append(...this.#cubes.map(cube => cube.el));
       }
+    }
 
-      if (this.#dataChangeEventQueue.length > 0) {
-        this.#dataChangeEventQueue.forEach(fn => {
-          fn.call(null, this.#matrix);
+    const randomPos = pos || allNonZeroPos[Math.floor(Math.random() * allNonZeroPos.length)];
+    if (randomPos) {
+      const [i, j] = randomPos;
+      if (this.#matrix[i][j] === 0) return;
+
+      this.#matrix[i][j] = 0;
+      this.#animationQueue.push({ type: 'zoom', target: [i, j], reverse: true });
+    }
+  }
+
+  #fireDataChangeEvents = this.#fireEvents(this.#dataChangeEventQueue);
+
+  #fireCubeMergedEvents = this.#fireEvents(this.#cubeMergedEventQueue);
+
+  #fireCubeClickEvents = this.#fireEvents(this.#cubeClickEventQueue);
+
+  #fireEvents<T extends (...args: any[]) => void>(queue: T[]) {
+    return (...params: Parameters<T>) => {
+      if (queue.length > 0) {
+        queue.forEach(fn => {
+          fn.call(null, ...params);
         });
       }
     };
+  }
+
+  #mountCubes() {
+    this.#cubes = this.#matrix.flat().map(value => new AnimatedCube(value));
+    this.#cubes.forEach((cube, index) => {
+      cube.el.onclick = () => {
+        this.#fireCubeClickEvents([~~(index / this.#cols), index % this.#cols], cube);
+      };
+    });
+
+    if (this.#root) {
+      while (this.#root.firstChild) {
+        this.#root.removeChild(this.#root.firstChild);
+      }
+      this.#root.append(...this.#cubes.map(cube => cube.el));
+    }
+
+    this.#fireDataChangeEvents(this.#matrix);
+  }
+
+  #render() {
+    this.#isRendering = true;
 
     if (this.#animationQueue.length > 0) {
       Promise.all(
@@ -256,32 +352,21 @@ export class Game {
           const {
             target: [x, y],
             type,
-            params
+            ...restParams
           } = animation;
-          const targetIndex = x * this.#cols + y;
-
-          if (type === 'zoom') {
-            const { value } = animation;
-
-            // @ts-expect-error promise type error
-            await this.#cubes[targetIndex].zoom({ value, params });
-          } else if (type === 'slide') {
-            const { pos, extDistance } = animation;
-
-            // @ts-expect-error promise type error
-            await this.#cubes[targetIndex].slide({ pos, extDistance, params });
-          } else if (type === 'pop') {
-            // @ts-expect-error promise type error
-            await this.#cubes[targetIndex].pop({});
-          }
+          // @ts-expect-error animejs promise type error
+          await this.#cubes[x * this.#cols + y][type](restParams);
         })
       ).then(() => {
-        remountCubes();
+        this.#mountCubes();
       });
     } else {
-      remountCubes();
+      this.#mountCubes();
     }
 
+    this.#isRendering = false;
     this.#animationQueue.length = 0;
   }
 }
+
+export default new Game();

@@ -22,7 +22,8 @@ interface BaseParams<T extends 'zoom' | 'slide' | 'pop'> {
 }
 
 interface ZoomParams extends BaseParams<'zoom'> {
-  value: number;
+  value?: number;
+  reverse?: boolean;
 }
 
 interface SlideParams extends BaseParams<'slide'> {
@@ -39,7 +40,7 @@ export class AnimatedCube {
   static SIZE = 64;
   static DURATION = 100;
 
-  constructor(value: number) {
+  constructor(public value: number) {
     const el = document.createElement('div');
     el.className = 'relative flex rounded before:absolute before:top-0 before:right-0 before:bottom-0 before:left-0 before:z-0 before:rounded before:bg-gray-400';
     el.setAttribute('style', `height: ${AnimatedCube.SIZE}px; width: ${AnimatedCube.SIZE}px`);
@@ -57,14 +58,16 @@ export class AnimatedCube {
   }
 
   zoom(params: Omit<ZoomParams, 'type' | 'target'>) {
-    const { value, params: _params } = params;
-    this.#target.textContent = `${value}`;
-    this.#target.classList.add(...CUBE_CLASS_MAP[value]);
+    const { value, reverse, params: _params } = params;
+    if (value) {
+      this.#target.textContent = `${value}`;
+      this.#target.classList.add(...CUBE_CLASS_MAP[value]);
+    }
 
     return animate(this.#target, {
       duration: AnimatedCube.DURATION,
-      scale: [0.2, 1],
-      opacity: 1,
+      scale: reverse ? [1, 0.2] : [0.2, 1],
+      opacity: reverse ? 0 : 1,
       ..._params
     });
   }

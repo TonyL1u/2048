@@ -1,3 +1,3 @@
-# vite-template-all-in-one
+# 2048
 
-vite项目模板
+A simple 2048 game. Have your fun!

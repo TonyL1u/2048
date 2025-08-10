@@ -1,9 +1,7 @@
 /* eslint-disable @typescript-eslint/prefer-for-of */
 import { useEffect, useRef, useState } from 'react';
 
-import { Game } from '../core/game';
-
-const game = new Game();
+import Game from '../core/game';
 
 export const useGame = () => {
   const root = useRef<HTMLDivElement>(null);
@@ -39,24 +37,34 @@ export const useGame = () => {
 
   useEffect(() => {
     if (root.current) {
-      game.init(root);
-      game.onCubeMerged(value => {
-        setScore(score => score + value);
+      Game.init(root);
+      Game.onCubeMerged((_, { to }) => {
+        setScore(score => score + to.cube.value * 2);
       });
-      game.onDataChange(matrix => {
+      Game.onDataChange(matrix => {
         setIsGameOver(checkIsGameOver(matrix));
       });
+      // Game.onCubeClick(pos => {
+      //   console.log(pos);
+      // });
     }
   }, []);
 
   return {
     root,
-    containerStyle: game.containerStyle,
+    containerStyle: Game.containerStyle,
     score,
     isGameOver,
+    getElements: () => Game.elements,
     reset: () => {
-      game.renew();
+      Game.renew();
       setScore(0);
+    },
+    addOne: (pos: [number, number]) => {
+      Game.addOne(pos, 2);
+    },
+    deleteOne: (pos: [number, number]) => {
+      Game.deleteOne(pos);
     }
   };
 };

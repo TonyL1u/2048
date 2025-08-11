@@ -2,7 +2,7 @@ import { createScope } from 'animejs';
 import { throttle } from 'es-toolkit';
 import type { CSSProperties, RefObject } from 'react';
 
-import { AnimatedCube, AnimationType } from './animation';
+import { AnimatedBlock, AnimationType } from './animation';
 
 enum Direction {
   UP,
@@ -17,22 +17,46 @@ interface GameConfig {
   gap?: number;
 }
 
-type DataChangeEvent = (matrix: number[][]) => void;
+type DataChangeEvent = (matrix: number[][], self: Game) => void;
 
-type CubeMergedEvent = (
+type BlockMergeEvent = (
   matrix: number[][],
   source: {
-    from: { pos: [number, number]; cube: AnimatedCube };
-    to: { pos: [number, number]; cube: AnimatedCube };
-  }
+    from: { pos: [number, number]; block: AnimatedBlock };
+    to: { pos: [number, number]; block: AnimatedBlock };
+  },
+  self: Game
 ) => void;
 
-type CubeClickEvent = (pos: [number, number], cube: AnimatedCube) => void;
+type BlockClickEvent = (matrix: number[][], source: { pos: [number, number]; block: AnimatedBlock }, self: Game) => void;
 
 const createMatrixArray = (rows: number, cols: number) => {
   return Array(rows)
     .fill(null)
     .map(() => Array(cols).fill(0) as number[]);
+};
+
+const createEventHook = <T extends (...args: any[]) => void>() => {
+  const queue: T[] = [];
+  const fire = (...params: Parameters<T>) => {
+    if (queue.length > 0) {
+      queue.forEach(fn => {
+        fn.call(null, ...params);
+      });
+    }
+  };
+  const on = (evt: T) => {
+    queue.push(evt);
+
+    return () => {
+      const index = queue.findIndex(_evt => _evt === evt);
+      if (index > -1) {
+        queue.splice(index, 1);
+      }
+    };
+  };
+
+  return { on, fire } as const;
 };
 
 class Game {
@@ -43,21 +67,78 @@ class Game {
   };
 
   #matrix: number[][] = [];
-  #cubes: AnimatedCube[] = [];
+  #blocks: AnimatedBlock[] = [];
   #root: HTMLDivElement | null = null;
 
   #animationQueue: AnimationType[] = [];
   #isRendering = false;
 
-  #dataChangeEventQueue: DataChangeEvent[] = [];
-  #cubeMergedEventQueue: CubeMergedEvent[] = [];
-  #cubeClickEventQueue: CubeClickEvent[] = [];
+  #dataChangeEvent = createEventHook<DataChangeEvent>();
+  #blockMergeEvent = createEventHook<BlockMergeEvent>();
+  #blockClickEvent = createEventHook<BlockClickEvent>();
+
+  onDataChange = this.#dataChangeEvent.on;
+  onBlockMerge = this.#blockMergeEvent.on;
+  onBlockClick = this.#blockClickEvent.on;
 
   constructor(config?: GameConfig) {
     this.#config = { ...this.#config, ...config };
   }
 
   init(root?: RefObject<HTMLDivElement>) {
+    this.#bindKeyboardEvent();
+    this.#bindTouchEvent();
+
+    if (root) {
+      createScope({ root });
+      this.#root = root.current;
+      this.renew();
+    }
+  }
+
+  renew() {
+    this.#isRendering = false;
+    this.#animationQueue.length = 0;
+    this.#matrix = createMatrixArray(this.#rows, this.#cols);
+    this.#render();
+    this.#add();
+    this.#start();
+  }
+
+  addOne(pos?: [number, number], value?: 2 | 4 | 8 | 16 | 32 | 64 | 128 | 256 | 512 | 1024 | 2048) {
+    this.#add(pos, value);
+    this.#render();
+  }
+
+  deleteOne(pos?: [number, number]) {
+    this.#delete(pos);
+    this.#render();
+  }
+
+  get containerStyle(): CSSProperties {
+    const { gap } = this.#config;
+
+    return {
+      display: 'grid',
+      width: 'max-content',
+      gridTemplateColumns: `repeat(${this.#cols}, minmax(0, 1fr))`,
+      gap: `${gap}px`
+    };
+  }
+
+  get elements() {
+    return this.#blocks.filter(block => block.value !== 0).map(block => block.el.childNodes[0]);
+  }
+
+  get #rows() {
+    return this.#config.rows;
+  }
+
+  get #cols() {
+    return this.#config.cols;
+  }
+
+  #bindKeyboardEvent() {
     window.addEventListener(
       'keydown',
       throttle(
@@ -93,66 +174,56 @@ class Game {
         { edges: ['leading'] }
       )
     );
-
-    if (root) {
-      createScope({ root });
-      this.#root = root.current;
-      this.renew();
-    }
   }
 
-  renew() {
-    this.#isRendering = false;
-    this.#animationQueue.length = 0;
-    this.#matrix = createMatrixArray(this.#rows, this.#cols);
-    this.#render();
-    this.#add();
-    this.#start();
-  }
+  #bindTouchEvent() {
+    let isSwiped = false;
+    const coordsStart = { x: 0, y: 0 };
+    const coordsEnd = { x: 0, y: 0 };
 
-  addOne(pos?: [number, number], value?: 2 | 4 | 8 | 16 | 32 | 64 | 128 | 256 | 512 | 1024 | 2048) {
-    this.#add(pos, value);
-    this.#render();
-  }
+    window.addEventListener(
+      'touchstart',
+      e => {
+        isSwiped = false;
+        coordsStart.x = coordsStart.y = coordsEnd.x = coordsEnd.y = 0;
 
-  deleteOne(pos?: [number, number]) {
-    this.#delete(pos);
-    this.#render();
-  }
+        const [x, y] = [e.touches[0].clientX, e.touches[0].clientY];
+        coordsStart.x = x;
+        coordsStart.y = y;
+      },
+      { passive: false, capture: true }
+    );
 
-  onDataChange(evt: DataChangeEvent) {
-    this.#dataChangeEventQueue.push(evt);
-  }
+    window.addEventListener(
+      'touchmove',
+      e => {
+        const [x, y] = [e.touches[0].clientX, e.touches[0].clientY];
+        coordsEnd.x = x;
+        coordsEnd.y = y;
 
-  onCubeMerged(evt: CubeMergedEvent) {
-    this.#cubeMergedEventQueue.push(evt);
-  }
+        const diffX = coordsStart.x - coordsEnd.x;
+        const diffY = coordsStart.y - coordsEnd.y;
 
-  onCubeClick(evt: CubeClickEvent) {
-    this.#cubeClickEventQueue.push(evt);
-  }
+        if (Math.max(Math.abs(diffX), Math.abs(diffY)) >= 20 && !isSwiped && !this.#isRendering) {
+          if (Math.abs(diffX) > Math.abs(diffY)) {
+            if (diffX > 0) {
+              if (this.#move(Direction.LEFT)) this.#start();
+            } else {
+              if (this.#move(Direction.RIGHT)) this.#start();
+            }
+          } else {
+            if (diffY > 0) {
+              if (this.#move(Direction.UP)) this.#start();
+            } else {
+              if (this.#move(Direction.DOWN)) this.#start();
+            }
+          }
 
-  get containerStyle(): CSSProperties {
-    const { gap } = this.#config;
-
-    return {
-      display: 'grid',
-      width: 'max-content',
-      gridTemplateColumns: `repeat(${this.#cols}, minmax(0, 1fr))`,
-      gap: `${gap}px`
-    };
-  }
-
-  get elements() {
-    return this.#cubes.filter(cube => cube.value !== 0).map(cube => cube.el.childNodes[0]);
-  }
-
-  get #rows() {
-    return this.#config.rows;
-  }
-
-  get #cols() {
-    return this.#config.cols;
+          isSwiped = true;
+        }
+      },
+      { passive: false, capture: true }
+    );
   }
 
   #start() {
@@ -208,16 +279,20 @@ class Game {
           this.#animationQueue.push({ type: 'pop', target: [i, j] });
           isMoved = true;
 
-          this.#fireCubeMergedEvents(this.#matrix, {
-            from: {
-              pos: [ni, nj],
-              cube: this.#cubes[ni * this.#cols + nj]
+          this.#blockMergeEvent.fire(
+            this.#matrix,
+            {
+              from: {
+                pos: [ni, nj],
+                block: this.#blocks[ni * this.#cols + nj]
+              },
+              to: {
+                pos: [i, j],
+                block: this.#blocks[i * this.#cols + j]
+              }
             },
-            to: {
-              pos: [i, j],
-              cube: this.#cubes[i * this.#cols + j]
-            }
-          });
+            this
+          );
         }
 
         calculate(...getNextPos(i, j));
@@ -275,16 +350,20 @@ class Game {
         this.#matrix[i][j] += randomValue;
         this.#animationQueue.push({ type: 'pop', target: [i, j] });
 
-        this.#fireCubeMergedEvents(this.#matrix, {
-          from: {
-            pos: [i, j],
-            cube: this.#cubes[i * this.#cols + j]
+        this.#blockMergeEvent.fire(
+          this.#matrix,
+          {
+            from: {
+              pos: [i, j],
+              block: this.#blocks[i * this.#cols + j]
+            },
+            to: {
+              pos: [i, j],
+              block: this.#blocks[i * this.#cols + j]
+            }
           },
-          to: {
-            pos: [i, j],
-            cube: this.#cubes[i * this.#cols + j]
-          }
-        });
+          this
+        );
       }
     }
   }
@@ -309,27 +388,11 @@ class Game {
     }
   }
 
-  #fireDataChangeEvents = this.#fireEvents(this.#dataChangeEventQueue);
-
-  #fireCubeMergedEvents = this.#fireEvents(this.#cubeMergedEventQueue);
-
-  #fireCubeClickEvents = this.#fireEvents(this.#cubeClickEventQueue);
-
-  #fireEvents<T extends (...args: any[]) => void>(queue: T[]) {
-    return (...params: Parameters<T>) => {
-      if (queue.length > 0) {
-        queue.forEach(fn => {
-          fn.call(null, ...params);
-        });
-      }
-    };
-  }
-
-  #mountCubes() {
-    this.#cubes = this.#matrix.flat().map(value => new AnimatedCube(value));
-    this.#cubes.forEach((cube, index) => {
-      cube.el.onclick = () => {
-        this.#fireCubeClickEvents([~~(index / this.#cols), index % this.#cols], cube);
+  #mountBlocks() {
+    this.#blocks = this.#matrix.flat().map(value => new AnimatedBlock(value));
+    this.#blocks.forEach((block, index) => {
+      block.el.onclick = () => {
+        this.#blockClickEvent.fire(this.#matrix, { pos: [~~(index / this.#cols), index % this.#cols], block }, this);
       };
     });
 
@@ -337,10 +400,10 @@ class Game {
       while (this.#root.firstChild) {
         this.#root.removeChild(this.#root.firstChild);
       }
-      this.#root.append(...this.#cubes.map(cube => cube.el));
+      this.#root.append(...this.#blocks.map(block => block.el));
     }
 
-    this.#fireDataChangeEvents(this.#matrix);
+    this.#dataChangeEvent.fire(this.#matrix, this);
   }
 
   #render() {
@@ -355,13 +418,13 @@ class Game {
             ...restParams
           } = animation;
           // @ts-expect-error animejs promise type error
-          await this.#cubes[x * this.#cols + y][type](restParams);
+          await this.#blocks[x * this.#cols + y][type](restParams);
         })
       ).then(() => {
-        this.#mountCubes();
+        this.#mountBlocks();
       });
     } else {
-      this.#mountCubes();
+      this.#mountBlocks();
     }
 
     this.#isRendering = false;

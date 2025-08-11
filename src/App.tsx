@@ -2,10 +2,11 @@ import './App.css';
 
 import { useEffect, useRef, useState } from 'react';
 
-import { useGame } from './hooks/use-game';
+import { Label } from '@/components/ui/label';
+import { Switch } from '@/components/ui/switch';
+import { useGame } from '@/hooks/use-game';
 
 function App() {
-  const { root, containerStyle, score, isGameOver, reset, addOne, deleteOne } = useGame();
   const oldScore = useRef(0);
   const scoreAdditionEl = useRef<HTMLDivElement>(null);
   const [bestScore, setBestScore] = useState(() => {
@@ -14,6 +15,8 @@ function App() {
 
     return 0;
   });
+  const [godMode, setGodMode] = useState(false);
+  const { root, containerStyle, score, isGameOver, reset } = useGame({ godMode });
 
   useEffect(() => {
     if (scoreAdditionEl.current && score > oldScore.current) {
@@ -48,8 +51,9 @@ function App() {
               </button>
             </div>
           )}
+          {godMode && <div className="absolute mt-1 text-xs text-gray-400">God mode😈: Clicking on an existing/non-existing block can directly eliminate/create it.</div>}
         </div>
-        <div className="flex flex-col justify-between">
+        <div className="flex w-27 flex-col justify-between">
           <div className="space-y-2">
             <div className="h-max w-full space-y-1 rounded bg-gray-400 p-2 text-center">
               <div className="text-sm font-bold text-white">SCORE</div>
@@ -63,22 +67,10 @@ function App() {
               <div className="w-full rounded bg-gray-300">{bestScore}</div>
             </div>
           </div>
-          <div className="space-y-2">
-            <div className="flex gap-x-2">
-              <button
-                className="flex-1 cursor-pointer rounded bg-gray-100 px-2 py-1 text-sm"
-                onClick={() => {
-                  deleteOne([0, 0]);
-                }}>
-                -1
-              </button>
-              <button
-                className="flex-1 cursor-pointer rounded bg-gray-100 px-2 py-1 text-sm"
-                onClick={() => {
-                  addOne([0, 0]);
-                }}>
-                +1
-              </button>
+          <div className="flex flex-col gap-y-2">
+            <div className="flex items-center justify-between">
+              <Switch id="god-mode" checked={godMode} onCheckedChange={setGodMode} />
+              <Label htmlFor="god-mode">God Mode</Label>
             </div>
             <button className="w-full cursor-pointer rounded bg-black px-2 py-1 text-sm text-white" onClick={reset}>
               New Game

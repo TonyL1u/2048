@@ -3,7 +3,12 @@ import { useEffect, useRef, useState } from 'react';
 
 import Game from '../core/game';
 
-export const useGame = () => {
+export interface UseGameOptions {
+  godMode?: boolean;
+}
+
+export const useGame = (options?: UseGameOptions) => {
+  const { godMode } = options || {};
   const root = useRef<HTMLDivElement>(null);
   const [score, setScore] = useState(0);
   const [isGameOver, setIsGameOver] = useState(false);
@@ -38,33 +43,38 @@ export const useGame = () => {
   useEffect(() => {
     if (root.current) {
       Game.init(root);
-      Game.onCubeMerged((_, { to }) => {
-        setScore(score => score + to.cube.value * 2);
+      Game.onBlockMerge((_, { to }) => {
+        setScore(score => score + to.block.value * 2);
       });
       Game.onDataChange(matrix => {
         setIsGameOver(checkIsGameOver(matrix));
       });
-      // Game.onCubeClick(pos => {
-      //   console.log(pos);
-      // });
     }
   }, []);
+
+  useEffect(() => {
+    const off = Game.onBlockClick((matrix, { pos }) => {
+      if (!godMode) return;
+
+      const [i, j] = pos;
+      if (matrix[i][j] === 0) {
+        Game.addOne(pos, 2);
+      } else {
+        Game.deleteOne(pos);
+      }
+    });
+
+    return off;
+  }, [godMode]);
 
   return {
     root,
     containerStyle: Game.containerStyle,
     score,
     isGameOver,
-    getElements: () => Game.elements,
     reset: () => {
       Game.renew();
       setScore(0);
-    },
-    addOne: (pos: [number, number]) => {
-      Game.addOne(pos, 2);
-    },
-    deleteOne: (pos: [number, number]) => {
-      Game.deleteOne(pos);
     }
   };
 };

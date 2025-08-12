@@ -38,7 +38,7 @@ function App() {
   }, [score]);
 
   return (
-    <div className="flex h-full flex-col items-center justify-center">
+    <div className="flex h-full flex-col items-center justify-center overflow-hidden">
       <h1 className="text-3xl font-bold">2048 Game</h1>
       <div className="mt-4 flex gap-x-2">
         <div className="relative">

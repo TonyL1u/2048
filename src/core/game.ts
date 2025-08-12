@@ -184,8 +184,6 @@ class Game {
     this.#root!.addEventListener(
       'touchstart',
       e => {
-        e.preventDefault();
-
         isSwiped = false;
         coordsStart.x = coordsStart.y = coordsEnd.x = coordsEnd.y = 0;
 

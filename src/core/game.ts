@@ -86,14 +86,14 @@ class Game {
   }
 
   init(root?: RefObject<HTMLDivElement>) {
+    if (!root) return;
+
+    this.#root = root.current;
     this.#bindKeyboardEvent();
     this.#bindTouchEvent();
 
-    if (root) {
-      createScope({ root });
-      this.#root = root.current;
-      this.renew();
-    }
+    createScope({ root });
+    this.renew();
   }
 
   renew() {
@@ -181,9 +181,11 @@ class Game {
     const coordsStart = { x: 0, y: 0 };
     const coordsEnd = { x: 0, y: 0 };
 
-    window.addEventListener(
+    this.#root!.addEventListener(
       'touchstart',
       e => {
+        e.preventDefault();
+
         isSwiped = false;
         coordsStart.x = coordsStart.y = coordsEnd.x = coordsEnd.y = 0;
 
@@ -194,9 +196,11 @@ class Game {
       { passive: false, capture: true }
     );
 
-    window.addEventListener(
+    this.#root!.addEventListener(
       'touchmove',
       e => {
+        e.preventDefault();
+
         const [x, y] = [e.touches[0].clientX, e.touches[0].clientY];
         coordsEnd.x = x;
         coordsEnd.y = y;
@@ -204,7 +208,7 @@ class Game {
         const diffX = coordsStart.x - coordsEnd.x;
         const diffY = coordsStart.y - coordsEnd.y;
 
-        if (Math.max(Math.abs(diffX), Math.abs(diffY)) >= 20 && !isSwiped && !this.#isRendering) {
+        if (Math.max(Math.abs(diffX), Math.abs(diffY)) >= 50 && !isSwiped && !this.#isRendering) {
           if (Math.abs(diffX) > Math.abs(diffY)) {
             if (diffX > 0) {
               if (this.#move(Direction.LEFT)) this.#start();
